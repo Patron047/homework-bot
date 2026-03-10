@@ -51,8 +51,9 @@ def send_message(bot, message):
     """Отправляет сообщение в Telegram-чат."""
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
+    except (ApiException, requests.RequestException):
+        raise
     except Exception:
-        logger.exception('Сбой при отправке сообщения в Telegram')
         raise
     else:
         logger.debug('Бот отправил сообщение "%s"', message)
@@ -90,16 +91,17 @@ def get_api_answer(timestamp):
 def check_response(response):
     """Проверяет ответ API на соответствие документации."""
     if not isinstance(response, dict):
+        response_type = type(response).__name__
         raise TypeError(
-            f'Ответ API не является словарем. '
-            f'Получен тип: {type(response).__name__}'
+            f'Ответ API не является словарем. Получен тип: {response_type}'
         )
     if 'homeworks' not in response:
         raise KeyError('В ответе API отсутствует ключ "homeworks"')
     if not isinstance(response['homeworks'], list):
+        homeworks_type = type(response['homeworks']).__name__
         raise TypeError(
             f'Значение ключа "homeworks" не является списком. '
-            f'Получен тип: {type(response["homeworks"]).__name__}'
+            f'Получен тип: {homeworks_type}'
         )
     return response['homeworks']
 
@@ -126,16 +128,17 @@ def process_homeworks(bot, homeworks):
     for homework in homeworks:
         try:
             message = parse_status(homework)
-            send_message(bot, message)
-        except ValueError:
+        except (KeyError, ValueError):
             continue
+        send_message(bot, message)
 
 
 def handle_error(error, bot, last_error_message):
     """Обрабатывает возникшее исключение: логирует и отправляет уведомление."""
     current_error = str(error)
-    is_telegram_error = isinstance(error, (ApiException,)) or (
-        isinstance(error, Exception) and 'Telegram' in current_error
+    is_telegram_error = isinstance(
+        error,
+        (ApiException, requests.RequestException)
     )
     message = f'Сбой в работе программы: {error}'
     logger.error(message)
@@ -155,7 +158,7 @@ def handle_error(error, bot, last_error_message):
             )
     else:
         logger.debug(
-            'Ошибка отправки в Telegram повторная попытка уведомления отменена'
+            'Ошибка отправки в Telegram. Повторное уведомление отменено.'
         )
     return last_error_message, True
 
